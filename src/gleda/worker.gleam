@@ -4,9 +4,10 @@ import gleda/common/internal/protocol.{
   type StageMessage, type WorkerMessage, Stop, Work, WorkerCompleted,
   WorkerStopped,
 }
+import gleda/common/types.{type Error, WorkerStartFailure}
 
 // Worker Type
-pub opaque type Worker(event) {
+pub type Worker(event) {
   Worker(id: Int, subject: process.Subject(WorkerMessage(event)))
 }
 
@@ -24,7 +25,7 @@ pub fn start_worker(
   id: Int,
   stage: process.Subject(StageMessage(event)),
   handler: fn(event) -> event,
-) -> Result(Worker(event), actor.StartError) {
+) -> Result(Worker(event), Error) {
   let initial_state = WorkerState(id, stage, handler)
 
   case
@@ -33,7 +34,7 @@ pub fn start_worker(
     |> actor.start()
   {
     Ok(started_actor) -> Ok(Worker(id: id, subject: started_actor.data))
-    Error(error) -> Error(error)
+    Error(_) -> Error(WorkerStartFailure)
   }
 }
 
