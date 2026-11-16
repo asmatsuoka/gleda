@@ -1,4 +1,5 @@
 import gleam/erlang/process
+import gleam/list
 import gleam/option
 import gleam/otp/actor
 import gleda/common/internal/protocol.{
@@ -7,7 +8,7 @@ import gleda/common/internal/protocol.{
 }
 import gleda/common/types.{
   type Error, type StageConfig, type StageId, type SubmissionResult, Accepted,
-  InvalidConfiguration, StageStartFailure, WorkerStartFailure,
+  InvalidConfiguration, StageStartFailure,
 }
 import gleda/queue
 import gleda/worker
@@ -22,6 +23,7 @@ type State(event) {
     queue: queue.Queue(event),
     workers: List(worker.Worker(event)),
     available_workers: List(worker.Worker(event)),
+    stopped_worker_ids: List(Int),
   )
 }
 
@@ -38,7 +40,13 @@ pub fn start_stage(
       let assert Ok(queue) = queue.new(config.queue_capacity)
 
       let initial_state =
-        State(stage_id: id, queue: queue, workers: [], available_workers: [])
+        State(
+          stage_id: id,
+          queue: queue,
+          workers: [],
+          available_workers: [],
+          stopped_worker_ids: [],
+        )
 
       case
         actor.new(initial_state)
@@ -96,7 +104,18 @@ fn handle_message(
       case find_state_worker(worker_id, state.workers) {
         option.None -> actor.continue(state)
         option.Some(_) -> {
-          todo
+          case !list.contains(state.stopped_worker_ids, worker_id) {
+            False -> actor.continue(state)
+            True -> {
+              let updated_state = {
+                State(..state, stopped_worker_ids: [
+                  worker_id,
+                  ..state.stopped_worker_ids
+                ])
+              }
+              actor.continue(updated_state)
+            }
+          }
         }
       }
     }
