@@ -8,6 +8,7 @@ pub type StageMessage(event) {
   RegisterWorker(
     worker_id: Int,
     worker_subject: process.Subject(WorkerMessage(event)),
+    reply_to: process.Subject(Nil),
   )
   WorkerStopped(worker_id: Int)
   WorkerCompleted(worker_id: Int, result: event)

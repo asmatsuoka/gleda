@@ -8,7 +8,7 @@ import gleda/common/internal/protocol.{
 }
 import gleda/common/types.{
   type Error, type StageConfig, type StageId, type SubmissionResult, Accepted,
-  InvalidConfiguration, StageStartFailure,
+  InvalidConfiguration, QueueFull, StageStartFailure,
 }
 import gleda/queue
 import gleda/worker
@@ -79,8 +79,9 @@ fn handle_message(
   message: StageMessage(event),
 ) -> actor.Next(State(event), StageMessage(event)) {
   case message {
-    RegisterWorker(worker_id, worker_subject) -> {
+    RegisterWorker(worker_id, worker_subject, reply_to) -> {
       let w = worker.Worker(worker_id, worker_subject)
+      process.send(reply_to, Nil)
       actor.continue(
         State(..state, workers: [w, ..state.workers], available_workers: [
           w,
@@ -90,7 +91,10 @@ fn handle_message(
     }
     Submit(event, reply_to) -> {
       case queue.push(state.queue, event) {
-        queue.Full -> actor.continue(state)
+        queue.Full -> {
+          process.send(reply_to, QueueFull)
+          actor.continue(state)
+        }
         queue.Accepted(updated_queue) -> {
           process.send(reply_to, Accepted)
           let updated_state = State(..state, queue: updated_queue)
@@ -148,7 +152,9 @@ fn register_workers(
       case worker.start_worker(worker_id, stage_subject, handler) {
         Error(error) -> Error(error)
         Ok(worker) -> {
-          process.send(stage_subject, RegisterWorker(worker_id, worker.subject))
+          process.call(stage_subject, 5000, fn(reply_to) {
+            RegisterWorker(worker_id, worker.subject, reply_to)
+          })
           register_workers(worker_id + 1, stage_subject, count - 1, handler)
         }
       }
