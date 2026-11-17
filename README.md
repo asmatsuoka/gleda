@@ -30,12 +30,12 @@ Queue submission and processing completion are separate operations. This is very
 
 ### Concurrency, Architecture and the BEAM
 
-**GLEDA** builds on the concurrency primitives provided by the Erlang Virtual Machine (BEAM), using [Gleam OTP](https://gleam-otp.hexdocs.pm/0.5.0/index.html)'s Actor Model abstraction.
+**GLEDA** builds on the concurrency primitives provided by the Erlang Virtual Machine (BEAM), using [Gleam OTP](https://github.com/gleam-lang/otp)'s Actor Model abstraction.
 Rather than implementing its own concurrency runtime, **GLEDA** delegates process execution, scheduling, message passing, and memory management to the BEAM.
 
 Each **GLEDA** stage runs as independent BEAM process and maintains its own application-level message queue, routing configuration and worker pool. The workers also run as independent processes, executing stage handlers and reporting their outcomes back to their related stage through async messaging.
 
-Scheduling of these processes (stages and workers) is completely up to the BEAM, enabling a concurrency using native resources.
+The BEAM scheduler manages the execution of these processes across available scheduler threads, enabling concurrent and potentially parallel processing.
 
 ## Development
 
@@ -69,3 +69,4 @@ Gleda is inspired by:
 - [SEDA: An Architecture for Well-Conditioned, Scalable Internet Services](https://dl.acm.org/doi/10.1145/502059.502057)
 - [ERLDA](https://github.com/fernandoareias/erlda)
 - [ERLDA: Explorando Concorrência e Resiliência com SEDA em Erlang](https://sol.sbc.org.br/index.php/se4fp/article/view/37105)
+- [Gleam OTP](https://github.com/gleam-lang/otp)
