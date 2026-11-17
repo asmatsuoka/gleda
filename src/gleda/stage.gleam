@@ -7,22 +7,23 @@ import gleda/common/internal/protocol.{
   WorkerStopped,
 }
 import gleda/common/types.{
-  type Error, type StageConfig, type StageId, type SubmissionResult, Accepted,
-  InvalidConfiguration, QueueFull, StageStartFailure,
+  type Error, type HandlerOutcome, type QueueSubmissionResult, type StageConfig,
+  type StageId, type StageReply, Accepted, Completed, Failed, Forwarded, Full,
+  InvalidConfiguration, StageStartFailure,
 }
 import gleda/queue
 import gleda/worker
 
-pub opaque type Stage(event) {
-  Stage(subject: process.Subject(StageMessage(event)))
+pub opaque type Stage(command, result, reason) {
+  Stage(subject: process.Subject(StageMessage(command, result, reason)))
 }
 
-type State(event) {
-  State(
+type StageState(command, result, reason) {
+  StageState(
     stage_id: StageId,
-    queue: queue.Queue(event),
-    workers: List(worker.Worker(event)),
-    available_workers: List(worker.Worker(event)),
+    queue: queue.Queue(#(command, process.Subject(StageReply(result, reason)))),
+    workers: List(worker.Worker(command, result, reason)),
+    available_workers: List(worker.Worker(command, result, reason)),
     stopped_worker_ids: List(Int),
   )
 }
@@ -30,8 +31,8 @@ type State(event) {
 pub fn start_stage(
   id: StageId,
   config: StageConfig,
-  handler: fn(event) -> event,
-) -> Result(Stage(event), Error) {
+  handler: fn(command) -> HandlerOutcome(command, result, reason),
+) -> Result(Stage(command, result, reason), Error) {
   case
     config.queue_capacity > 0 && config.worker_count > 0 && config.name != ""
   {
@@ -40,7 +41,7 @@ pub fn start_stage(
       let assert Ok(queue) = queue.new(config.queue_capacity)
 
       let initial_state =
-        State(
+        StageState(
           stage_id: id,
           queue: queue,
           workers: [],
@@ -68,38 +69,47 @@ pub fn start_stage(
   }
 }
 
-pub fn submit(stage: Stage(event), event: event) -> SubmissionResult {
+pub fn submit(
+  stage: Stage(command, result, reason),
+  command: command,
+  result_reply_to: process.Subject(StageReply(result, reason)),
+) -> QueueSubmissionResult {
   process.call(stage.subject, 5000, fn(reply_to) {
-    Submit(event: event, reply_to: reply_to)
+    Submit(
+      event: command,
+      queue_submission_reply_to: reply_to,
+      result_reply_to: result_reply_to,
+    )
   })
 }
 
 fn handle_message(
-  state: State(event),
-  message: StageMessage(event),
-) -> actor.Next(State(event), StageMessage(event)) {
+  state: StageState(command, result, reason),
+  message: StageMessage(command, result, reason),
+) -> actor.Next(
+  StageState(command, result, reason),
+  StageMessage(command, result, reason),
+) {
   case message {
     RegisterWorker(worker_id, worker_subject, reply_to) -> {
       let w = worker.Worker(worker_id, worker_subject)
       process.send(reply_to, Nil)
       actor.continue(
-        State(..state, workers: [w, ..state.workers], available_workers: [
+        StageState(..state, workers: [w, ..state.workers], available_workers: [
           w,
           ..state.available_workers
         ]),
       )
     }
-    Submit(event, reply_to) -> {
-      case queue.push(state.queue, event) {
+    Submit(command, queue_submission_reply_to, result_reply_to) -> {
+      case queue.push(state.queue, #(command, result_reply_to)) {
         queue.Full -> {
-          process.send(reply_to, QueueFull)
+          process.send(queue_submission_reply_to, Full)
           actor.continue(state)
         }
         queue.Accepted(updated_queue) -> {
-          process.send(reply_to, Accepted)
-          let updated_state = State(..state, queue: updated_queue)
-
-          actor.continue(dispatch(updated_state))
+          process.send(queue_submission_reply_to, Accepted)
+          actor.continue(dispatch(StageState(..state, queue: updated_queue)))
         }
       }
     }
@@ -112,7 +122,7 @@ fn handle_message(
             False -> actor.continue(state)
             True -> {
               let updated_state = {
-                State(..state, stopped_worker_ids: [
+                StageState(..state, stopped_worker_ids: [
                   worker_id,
                   ..state.stopped_worker_ids
                 ])
@@ -124,27 +134,51 @@ fn handle_message(
       }
     }
 
-    WorkerCompleted(worker_id, _result) -> {
+    WorkerCompleted(worker_id, outcome, result_reply_to) -> {
       case find_state_worker(worker_id, state.workers) {
         option.None -> actor.continue(state)
         option.Some(worker) -> {
-          let updated_state =
-            State(..state, available_workers: [
-              worker,
-              ..state.available_workers
-            ])
-          actor.continue(dispatch(updated_state))
+          actor.continue(
+            dispatch(handle_outcome(
+              StageState(..state, available_workers: [
+                worker,
+                ..state.available_workers
+              ]),
+              outcome,
+              result_reply_to,
+            )),
+          )
         }
       }
     }
   }
 }
 
+fn handle_outcome(
+  state: StageState(command, result, reason),
+  outcome: HandlerOutcome(command, result, reason),
+  reply_to: process.Subject(StageReply(result, reason)),
+) -> StageState(command, result, reason) {
+  case outcome {
+    Completed(result) -> {
+      process.send(reply_to, types.CompletedReply(result))
+      state
+    }
+    Failed(reason) -> {
+      process.send(reply_to, types.FailedReply(reason))
+      state
+    }
+    Forwarded(command, target_id) -> {
+      todo
+    }
+  }
+}
+
 fn register_workers(
   worker_id: Int,
-  stage_subject: process.Subject(StageMessage(event)),
+  stage_subject: process.Subject(StageMessage(command, result, reason)),
   count: Int,
-  handler: fn(event) -> event,
+  handler: fn(command) -> HandlerOutcome(command, result, reason),
 ) -> Result(Nil, Error) {
   case count > 0 {
     False -> Ok(Nil)
@@ -162,7 +196,9 @@ fn register_workers(
   }
 }
 
-fn dispatch(state: State(event)) -> State(event) {
+fn dispatch(
+  state: StageState(command, result, reason),
+) -> StageState(command, result, reason) {
   case state.available_workers {
     [] -> state
     [worker, ..remaining_workers] -> {
@@ -170,10 +206,10 @@ fn dispatch(state: State(event)) -> State(event) {
 
       case next_item {
         option.None -> state
-        option.Some(queued) -> {
-          process.send(worker.subject, Work(queued))
+        option.Some(#(command, reply_to)) -> {
+          process.send(worker.subject, Work(command, reply_to))
           dispatch(
-            State(
+            StageState(
               ..state,
               queue: updated_queue,
               available_workers: remaining_workers,
@@ -187,8 +223,8 @@ fn dispatch(state: State(event)) -> State(event) {
 
 fn find_state_worker(
   id: Int,
-  workers: List(worker.Worker(event)),
-) -> option.Option(worker.Worker(event)) {
+  workers: List(worker.Worker(command, result, reason)),
+) -> option.Option(worker.Worker(command, result, reason)) {
   case workers {
     [] -> option.None
     [worker, ..tail] -> {

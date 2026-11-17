@@ -6,10 +6,21 @@ pub type StageConfig {
   StageConfig(name: String, queue_capacity: Int, worker_count: Int)
 }
 
-pub type SubmissionResult {
+pub type QueueSubmissionResult {
   Accepted
-  QueueFull
-  StageUnavailable
+  Full
+}
+
+pub type HandlerOutcome(command, result, reason) {
+  Completed(result: result)
+  Failed(reason: reason)
+  Forwarded(command: command, target: StageId)
+}
+
+pub type StageReply(result, reason) {
+  CompletedReply(result: result)
+  FailedReply(reason: reason)
+  ForwardUnavailable(target: StageId)
 }
 
 // Error Type

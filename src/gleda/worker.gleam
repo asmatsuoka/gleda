@@ -4,28 +4,33 @@ import gleda/common/internal/protocol.{
   type StageMessage, type WorkerMessage, Stop, Work, WorkerCompleted,
   WorkerStopped,
 }
-import gleda/common/types.{type Error, WorkerStartFailure}
+import gleda/common/types.{
+  type Error, type HandlerOutcome, type StageReply, WorkerStartFailure,
+}
 
 // Worker Type
-pub type Worker(event) {
-  Worker(id: Int, subject: process.Subject(WorkerMessage(event)))
+pub type Worker(command, result, reason) {
+  Worker(
+    id: Int,
+    subject: process.Subject(WorkerMessage(command, result, reason)),
+  )
 }
 
 // Worker State Type
-type WorkerState(event) {
+type WorkerState(command, result, reason) {
   WorkerState(
     id: Int,
-    stage: process.Subject(StageMessage(event)),
-    handler: fn(event) -> event,
+    stage: process.Subject(StageMessage(command, result, reason)),
+    handler: fn(command) -> HandlerOutcome(command, result, reason),
   )
 }
 
 // Start a new Worker as an Actor
 pub fn start_worker(
   id: Int,
-  stage: process.Subject(StageMessage(event)),
-  handler: fn(event) -> event,
-) -> Result(Worker(event), Error) {
+  stage: process.Subject(StageMessage(command, result, reason)),
+  handler: fn(command) -> HandlerOutcome(command, result, reason),
+) -> Result(Worker(command, result, reason), Error) {
   let initial_state = WorkerState(id, stage, handler)
 
   case
@@ -38,29 +43,45 @@ pub fn start_worker(
   }
 }
 
-pub fn work(worker: Worker(event), event: event) -> Nil {
-  process.send(worker.subject, Work(event))
+pub fn work(
+  worker: Worker(command, result, reason),
+  command: command,
+  reply_to: process.Subject(StageReply(result, reason)),
+) -> Nil {
+  process.send(worker.subject, Work(command, reply_to))
 }
 
-pub fn stop(worker: Worker(event)) -> Nil {
+pub fn stop(worker: Worker(command, result, reason)) -> Nil {
   process.send(worker.subject, Stop)
 }
 
-pub fn get_id(worker: Worker(event)) -> Int {
+pub fn get_id(worker: Worker(command, result, reason)) -> Int {
   worker.id
 }
 
-// Handle incoming messages for the Worker Actor. If the message is a Work event, it will call the handler function and continue processing
 fn handle_message(
-  state: WorkerState(event),
-  message: WorkerMessage(event),
-) -> actor.Next(WorkerState(event), WorkerMessage(event)) {
+  state: WorkerState(command, result, reason),
+  message: WorkerMessage(command, result, reason),
+) -> actor.Next(
+  WorkerState(command, result, reason),
+  WorkerMessage(command, result, reason),
+) {
   case message {
-    Work(event) -> {
-      let result = state.handler(event)
-      process.send(state.stage, WorkerCompleted(state.id, result))
+    Work(command, reply_to) -> {
+      let outcome = state.handler(command)
+
+      process.send(
+        state.stage,
+        WorkerCompleted(
+          worker_id: state.id,
+          outcome: outcome,
+          result_reply_to: reply_to,
+        ),
+      )
+
       actor.continue(state)
     }
+
     Stop -> {
       process.send(state.stage, WorkerStopped(state.id))
       actor.stop()

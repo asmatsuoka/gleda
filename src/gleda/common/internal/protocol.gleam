@@ -1,20 +1,35 @@
 import gleam/erlang/process
-import gleda/common/types.{type SubmissionResult}
+import gleda/common/types.{
+  type HandlerOutcome, type QueueSubmissionResult, type StageReply,
+}
 
-pub type StageMessage(event) {
-  Submit(event: event, reply_to: process.Subject(SubmissionResult))
+pub type StageMessage(command, result, reason) {
+  Submit(
+    event: command,
+    queue_submission_reply_to: process.Subject(QueueSubmissionResult),
+    result_reply_to: process.Subject(StageReply(result, reason)),
+  )
 
   // Worker related messages
   RegisterWorker(
     worker_id: Int,
-    worker_subject: process.Subject(WorkerMessage(event)),
-    reply_to: process.Subject(Nil),
+    worker_subject: process.Subject(WorkerMessage(command, result, reason)),
+    queue_submission_reply_to: process.Subject(Nil),
   )
+
   WorkerStopped(worker_id: Int)
-  WorkerCompleted(worker_id: Int, result: event)
+
+  WorkerCompleted(
+    worker_id: Int,
+    outcome: HandlerOutcome(command, result, reason),
+    result_reply_to: process.Subject(StageReply(result, reason)),
+  )
 }
 
-pub type WorkerMessage(event) {
-  Work(event)
+pub type WorkerMessage(command, result, reason) {
+  Work(
+    command: command,
+    result_reply_to: process.Subject(StageReply(result, reason)),
+  )
   Stop
 }
