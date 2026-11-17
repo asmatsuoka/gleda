@@ -1,7 +1,7 @@
 import gleam/erlang/process
 import gleda/common/types.{
-  type StageConfig, Accepted, Completed, CompletedReply, Routed,
-  RoutingUnavailable, StageConfig, StageId,
+  type StageConfig, Accepted, Completed, CompletedReply, RouteNotFound, Routed,
+  StageConfig, StageId,
 }
 import gleda/stage
 
@@ -119,7 +119,7 @@ pub fn stage_returns_error_for_missing_route_test() {
 
   let assert Accepted = stage.submit(stage_a, "command", reply_subject)
 
-  let assert Ok(RoutingUnavailable(_stage_b_id)) =
+  let assert Ok(RouteNotFound(_stage_b_id)) =
     process.receive(reply_subject, within: 1000)
 
   Nil

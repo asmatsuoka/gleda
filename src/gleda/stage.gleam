@@ -9,7 +9,7 @@ import gleda/common/internal/protocol.{
 import gleda/common/types.{
   type Error, type HandlerOutcome, type QueueSubmissionResult, type StageConfig,
   type StageId, type StageReply, Accepted, Completed, Failed, Full,
-  InvalidConfiguration, Routed, StageStartFailure,
+  InvalidConfiguration, RouteNotFound, RouteQueueFull, Routed, StageStartFailure,
 }
 import gleda/queue
 import gleda/worker
@@ -136,10 +136,7 @@ fn handle_message(
     Route(command, result_reply_to) -> {
       case queue.push(state.queue, #(command, result_reply_to)) {
         queue.Full -> {
-          process.send(
-            result_reply_to,
-            types.RoutingUnavailable(state.stage_id),
-          )
+          process.send(result_reply_to, RouteQueueFull(state.stage_id))
           actor.continue(state)
         }
         queue.Accepted(updated_queue) -> {
@@ -216,7 +213,7 @@ fn handle_outcome(
     Routed(command, target_id) -> {
       case find_state_route(target_id, state.routes) {
         option.None -> {
-          process.send(reply_to, types.RoutingUnavailable(target: target_id))
+          process.send(reply_to, RouteNotFound(target: target_id))
           state
         }
         option.Some(#(_stage_id, target_subject)) -> {

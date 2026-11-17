@@ -20,7 +20,8 @@ pub type HandlerOutcome(command, result, reason) {
 pub type StageReply(result, reason) {
   CompletedReply(result: result)
   FailedReply(reason: reason)
-  RoutingUnavailable(target: StageId)
+  RouteNotFound(target: StageId)
+  RouteQueueFull(target: StageId)
 }
 
 // Error Type
