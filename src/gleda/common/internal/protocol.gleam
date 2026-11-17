@@ -1,12 +1,24 @@
 import gleam/erlang/process
 import gleda/common/types.{
-  type HandlerOutcome, type QueueSubmissionResult, type StageReply,
+  type HandlerOutcome, type QueueSubmissionResult, type StageId, type StageReply,
 }
 
 pub type StageMessage(command, result, reason) {
   Submit(
-    event: command,
+    command: command,
     queue_submission_reply_to: process.Subject(QueueSubmissionResult),
+    result_reply_to: process.Subject(StageReply(result, reason)),
+  )
+
+  // Routing / Forwarding Stage by Stage
+  RegisterRoute(
+    target_id: StageId,
+    target_subject: process.Subject(StageMessage(command, result, reason)),
+    result_reply_to: process.Subject(Nil),
+  )
+
+  Route(
+    command: command,
     result_reply_to: process.Subject(StageReply(result, reason)),
   )
 

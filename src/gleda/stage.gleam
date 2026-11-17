@@ -3,13 +3,13 @@ import gleam/list
 import gleam/option
 import gleam/otp/actor
 import gleda/common/internal/protocol.{
-  type StageMessage, RegisterWorker, Submit, Work, WorkerCompleted,
-  WorkerStopped,
+  type StageMessage, RegisterRoute, RegisterWorker, Route, Submit, Work,
+  WorkerCompleted, WorkerStopped,
 }
 import gleda/common/types.{
   type Error, type HandlerOutcome, type QueueSubmissionResult, type StageConfig,
-  type StageId, type StageReply, Accepted, Completed, Failed, Forwarded, Full,
-  InvalidConfiguration, StageStartFailure,
+  type StageId, type StageReply, Accepted, Completed, Failed, Full,
+  InvalidConfiguration, Routed, StageStartFailure,
 }
 import gleda/queue
 import gleda/worker
@@ -25,6 +25,9 @@ type StageState(command, result, reason) {
     workers: List(worker.Worker(command, result, reason)),
     available_workers: List(worker.Worker(command, result, reason)),
     stopped_worker_ids: List(Int),
+    routes: List(
+      #(StageId, process.Subject(StageMessage(command, result, reason))),
+    ),
   )
 }
 
@@ -47,6 +50,7 @@ pub fn start_stage(
           workers: [],
           available_workers: [],
           stopped_worker_ids: [],
+          routes: [],
         )
 
       case
@@ -76,11 +80,23 @@ pub fn submit(
 ) -> QueueSubmissionResult {
   process.call(stage.subject, 5000, fn(reply_to) {
     Submit(
-      event: command,
+      command: command,
       queue_submission_reply_to: reply_to,
       result_reply_to: result_reply_to,
     )
   })
+}
+
+pub fn connect(
+  source: Stage(command, result, reason),
+  target_id: StageId,
+  target: Stage(command, result, reason),
+) -> Nil {
+  process.call(source.subject, 5000, fn(result_reply_to) {
+    RegisterRoute(target_id, target.subject, result_reply_to)
+  })
+
+  Nil
 }
 
 fn handle_message(
@@ -91,16 +107,6 @@ fn handle_message(
   StageMessage(command, result, reason),
 ) {
   case message {
-    RegisterWorker(worker_id, worker_subject, reply_to) -> {
-      let w = worker.Worker(worker_id, worker_subject)
-      process.send(reply_to, Nil)
-      actor.continue(
-        StageState(..state, workers: [w, ..state.workers], available_workers: [
-          w,
-          ..state.available_workers
-        ]),
-      )
-    }
     Submit(command, queue_submission_reply_to, result_reply_to) -> {
       case queue.push(state.queue, #(command, result_reply_to)) {
         queue.Full -> {
@@ -112,6 +118,45 @@ fn handle_message(
           actor.continue(dispatch(StageState(..state, queue: updated_queue)))
         }
       }
+    }
+
+    RegisterRoute(target_id, target_subject, result_reply_to) -> {
+      let updated_routes = case find_state_route(target_id, state.routes) {
+        option.None -> {
+          [#(target_id, target_subject), ..state.routes]
+        }
+        option.Some(_) -> {
+          replace_state_route(target_id, target_subject, state.routes)
+        }
+      }
+      process.send(result_reply_to, Nil)
+      actor.continue(StageState(..state, routes: updated_routes))
+    }
+
+    Route(command, result_reply_to) -> {
+      case queue.push(state.queue, #(command, result_reply_to)) {
+        queue.Full -> {
+          process.send(
+            result_reply_to,
+            types.RoutingUnavailable(state.stage_id),
+          )
+          actor.continue(state)
+        }
+        queue.Accepted(updated_queue) -> {
+          actor.continue(dispatch(StageState(..state, queue: updated_queue)))
+        }
+      }
+    }
+
+    RegisterWorker(worker_id, worker_subject, reply_to) -> {
+      let w = worker.Worker(worker_id, worker_subject)
+      process.send(reply_to, Nil)
+      actor.continue(
+        StageState(..state, workers: [w, ..state.workers], available_workers: [
+          w,
+          ..state.available_workers
+        ]),
+      )
     }
 
     WorkerStopped(worker_id) -> {
@@ -168,8 +213,17 @@ fn handle_outcome(
       process.send(reply_to, types.FailedReply(reason))
       state
     }
-    Forwarded(command, target_id) -> {
-      todo
+    Routed(command, target_id) -> {
+      case find_state_route(target_id, state.routes) {
+        option.None -> {
+          process.send(reply_to, types.RoutingUnavailable(target: target_id))
+          state
+        }
+        option.Some(#(_stage_id, target_subject)) -> {
+          process.send(target_subject, Route(command, reply_to))
+          state
+        }
+      }
     }
   }
 }
@@ -231,6 +285,46 @@ fn find_state_worker(
       case worker.id == id {
         True -> option.Some(worker)
         False -> find_state_worker(id, tail)
+      }
+    }
+  }
+}
+
+fn find_state_route(
+  target_id: StageId,
+  routes: List(
+    #(StageId, process.Subject(StageMessage(command, result, reason))),
+  ),
+) -> option.Option(
+  #(StageId, process.Subject(StageMessage(command, result, reason))),
+) {
+  case routes {
+    [] -> option.None
+    [#(stage_id, subject), ..tail] -> {
+      case stage_id == target_id {
+        True -> option.Some(#(stage_id, subject))
+        False -> find_state_route(target_id, tail)
+      }
+    }
+  }
+}
+
+fn replace_state_route(
+  target_id: StageId,
+  target_subject: process.Subject(StageMessage(command, result, reason)),
+  routes: List(
+    #(StageId, process.Subject(StageMessage(command, result, reason))),
+  ),
+) -> List(#(StageId, process.Subject(StageMessage(command, result, reason)))) {
+  case routes {
+    [] -> [#(target_id, target_subject)]
+    [#(id, subject), ..rest] -> {
+      case id == target_id {
+        True -> [#(target_id, target_subject), ..rest]
+        False -> [
+          #(id, subject),
+          ..replace_state_route(target_id, target_subject, rest)
+        ]
       }
     }
   }

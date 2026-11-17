@@ -14,13 +14,13 @@ pub type QueueSubmissionResult {
 pub type HandlerOutcome(command, result, reason) {
   Completed(result: result)
   Failed(reason: reason)
-  Forwarded(command: command, target: StageId)
+  Routed(command: command, target: StageId)
 }
 
 pub type StageReply(result, reason) {
   CompletedReply(result: result)
   FailedReply(reason: reason)
-  ForwardUnavailable(target: StageId)
+  RoutingUnavailable(target: StageId)
 }
 
 // Error Type
