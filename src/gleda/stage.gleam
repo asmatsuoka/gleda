@@ -8,8 +8,9 @@ import gleda/common/internal/protocol.{
 }
 import gleda/common/types.{
   type Error, type HandlerOutcome, type QueueSubmissionResult, type StageConfig,
-  type StageId, type StageReply, Accepted, Completed, Failed, Full,
-  InvalidConfiguration, RouteNotFound, RouteQueueFull, Routed, StageStartFailure,
+  type StageId, type StageReply, Accepted, Completed, CompletedReply, Failed,
+  FailedReply, Full, InvalidConfiguration, RouteNotFound, RouteQueueFull, Routed,
+  StageStartFailure,
 }
 import gleda/queue
 import gleda/worker
@@ -203,11 +204,11 @@ fn handle_outcome(
 ) -> StageState(command, result, reason) {
   case outcome {
     Completed(result) -> {
-      process.send(reply_to, types.CompletedReply(result))
+      process.send(reply_to, CompletedReply(result))
       state
     }
     Failed(reason) -> {
-      process.send(reply_to, types.FailedReply(reason))
+      process.send(reply_to, FailedReply(reason))
       state
     }
     Routed(command, target_id) -> {
