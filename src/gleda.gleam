@@ -58,12 +58,17 @@ pub fn main() {
       }
     })
 
+  let error_list =
+    list.filter(result_list, fn(reply) {
+      case reply {
+        Error(_) -> True
+        _ -> False
+      }
+    })
+
   io.println("Accepted: " <> int.to_string(list.length(accepted_subject_list)))
 
   io.println("Completed: " <> int.to_string(list.length(completed_list)))
 
-  io.println(
-    "Failed: "
-    <> int.to_string(list.length(result_list) - list.length(completed_list)),
-  )
+  io.println("Failed: " <> int.to_string(list.length(error_list)))
 }
