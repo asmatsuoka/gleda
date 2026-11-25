@@ -1,0 +1,9 @@
+services:
+  postgres:
+    image: postgres:latest
+    environment:
+      - POSTGRES_USER=gleda_app_user
+      - POSTGRES_PASSWORD=devpass
+      - POSTGRES_DB=gleda_db
+    ports:
+      - "5432:5432"
