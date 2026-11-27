@@ -8,9 +8,9 @@ pub fn start() -> process.Name(pog.Message) {
     pog.default_config(pool_name)
     |> pog.host("localhost")
     |> pog.port(5432)
-    |> pog.database("demo_db")
-    |> pog.user("postgres")
-    |> pog.password(option.Some("postgres"))
+    |> pog.database("gleda_db")
+    |> pog.user("gleda_app_user")
+    |> pog.password(option.Some("devpass"))
     |> pog.pool_size(10)
   let assert Ok(_) = pog.start(db_config)
 

@@ -5,7 +5,9 @@ import gleam/io
 import gleam/list
 import gleam/result
 import gleam/string
-import gleda/common/types.{Accepted, CompletedReply, Full}
+import gleda/common/types.{
+  Accepted, CompletedReply, FailedReply, Full, RouteNotFound, RouteQueueFull,
+}
 import gleda/stage
 
 pub fn main() {
@@ -47,7 +49,7 @@ pub fn main() {
 
   let result_list =
     list.map(accepted_subject_list, fn(subject) {
-      process.receive(subject, within: 10)
+      process.receive(subject, within: 10_000)
     })
 
   let completed_list =
@@ -58,7 +60,17 @@ pub fn main() {
       }
     })
 
-  let error_list =
+  let failed_list =
+    list.filter(result_list, fn(reply) {
+      case reply {
+        Ok(FailedReply(_)) -> True
+        Ok(RouteQueueFull(_)) -> True
+        Ok(RouteNotFound(_)) -> True
+        _ -> False
+      }
+    })
+
+  let timeout_list =
     list.filter(result_list, fn(reply) {
       case reply {
         Error(_) -> True
@@ -70,5 +82,7 @@ pub fn main() {
 
   io.println("Completed: " <> int.to_string(list.length(completed_list)))
 
-  io.println("Failed: " <> int.to_string(list.length(error_list)))
+  io.println("Failed: " <> int.to_string(list.length(failed_list)))
+
+  io.println("Timed Out: " <> int.to_string(list.length(timeout_list)))
 }
