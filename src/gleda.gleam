@@ -60,11 +60,25 @@ pub fn main() {
       }
     })
 
-  let failed_list =
+  let handler_failed =
     list.filter(result_list, fn(reply) {
       case reply {
         Ok(FailedReply(_)) -> True
+        _ -> False
+      }
+    })
+
+  let route_queue_full =
+    list.filter(result_list, fn(reply) {
+      case reply {
         Ok(RouteQueueFull(_)) -> True
+        _ -> False
+      }
+    })
+
+  let route_not_found =
+    list.filter(result_list, fn(reply) {
+      case reply {
         Ok(RouteNotFound(_)) -> True
         _ -> False
       }
@@ -82,7 +96,13 @@ pub fn main() {
 
   io.println("Completed: " <> int.to_string(list.length(completed_list)))
 
-  io.println("Failed: " <> int.to_string(list.length(failed_list)))
+  io.println("Failed Handler: " <> int.to_string(list.length(handler_failed)))
+  io.println(
+    "Failed Queue Full: " <> int.to_string(list.length(route_queue_full)),
+  )
+  io.println(
+    "Failed Not Found: " <> int.to_string(list.length(route_not_found)),
+  )
 
   io.println("Timed Out: " <> int.to_string(list.length(timeout_list)))
 }

@@ -17,7 +17,7 @@ const parser_id = StageId("parser")
 
 const validator_id = StageId("validator")
 
-const processor_id = StageId("enrichment")
+const processor_id = StageId("processor")
 
 pub fn start() -> Result(Application, Error) {
   let db_pool_name = database.start()
@@ -28,21 +28,21 @@ pub fn start() -> Result(Application, Error) {
   let assert Ok(processor) =
     stage.start_stage(
       processor_id,
-      types.StageConfig(name: "processor", queue_capacity: 100, worker_count: 2),
+      types.StageConfig(name: "processor", queue_capacity: 500, worker_count: 5),
       processor_handler,
     )
 
   let assert Ok(validator) =
     stage.start_stage(
       validator_id,
-      types.StageConfig(name: "validator", queue_capacity: 100, worker_count: 2),
+      types.StageConfig(name: "validator", queue_capacity: 100, worker_count: 5),
       validator_handler,
     )
 
   let assert Ok(parser) =
     stage.start_stage(
       parser_id,
-      types.StageConfig(name: "parser", queue_capacity: 100, worker_count: 2),
+      types.StageConfig(name: "parser", queue_capacity: 350, worker_count: 5),
       parser_handler,
     )
 

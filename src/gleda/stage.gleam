@@ -1,4 +1,5 @@
 import gleam/erlang/process
+import gleam/io
 import gleam/list
 import gleam/option
 import gleam/otp/actor
@@ -137,6 +138,8 @@ fn handle_message(
     Route(command, result_reply_to) -> {
       case queue.push(state.queue, #(command, result_reply_to)) {
         queue.Full -> {
+          let types.StageId(stage_id) = state.stage_id
+          io.println("Queue full at stage: " <> stage_id)
           process.send(result_reply_to, RouteQueueFull(state.stage_id))
           actor.continue(state)
         }
