@@ -28,14 +28,18 @@ pub fn start() -> Result(Application, Error) {
   let assert Ok(processor) =
     stage.start_stage(
       processor_id,
-      types.StageConfig(name: "processor", queue_capacity: 500, worker_count: 5),
+      types.StageConfig(
+        name: "processor",
+        queue_capacity: 1000,
+        worker_count: 5,
+      ),
       processor_handler,
     )
 
   let assert Ok(validator) =
     stage.start_stage(
       validator_id,
-      types.StageConfig(name: "validator", queue_capacity: 100, worker_count: 5),
+      types.StageConfig(name: "validator", queue_capacity: 200, worker_count: 5),
       validator_handler,
     )
 

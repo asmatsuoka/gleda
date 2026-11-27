@@ -10,11 +10,11 @@ pub fn validator_handler(
       Error(_) -> Failed("ValidatorHandler Error: Invalid order JSON")
       Ok(order) -> {
         case order.unit_price, order.quantity {
-          u, _ if u < 0 ->
+          u, _ if u <= 0 ->
             Failed(
               "ValidatorHandler Error: Unit Price has to be Greater than 0.",
             )
-          _, q if q < 0 ->
+          _, q if q <= 0 ->
             Failed("ValidatorHandler Error: Quantity has to be Greater than 0.")
           _, _ -> Routed(order_json.serialize_json_order(order), next_stage_id)
         }

@@ -14,7 +14,7 @@ pub fn main() {
   let assert Ok(app) = application.start()
 
   let order_ids =
-    int.range(from: 1, to: 501, with: [], run: list.prepend) |> list.reverse
+    int.range(from: 1, to: 1001, with: [], run: list.prepend) |> list.reverse
 
   let submissions =
     list.map(order_ids, fn(order_id) {
@@ -22,7 +22,11 @@ pub fn main() {
       let order =
         "{\"id\":\"ORD-"
         <> string.pad_start(int.to_string(order_id), 4, "0")
-        <> "\",\"unit_price\":100,\"quantity\":3}"
+        <> "\",\"unit_price\":"
+        <> int.to_string(int.random(10))
+        <> ",\"quantity\":"
+        <> int.to_string(int.random(10))
+        <> "}"
 
       case stage.submit(app.parser, order, reply_subject) {
         Accepted -> {
